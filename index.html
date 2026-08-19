@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SNS OGP画像・シェアプレビュー生成ツール | X(Twitter)・LINE・Facebook対応</title>
+  <meta name="description" content="ブログやWebサイトのOGP画像、タイトル、説明文がSNS（X/Twitter、Facebook、LINE）でどう表示されるかをリアルタイムで確認できるプレビューツール。完全ローカル処理。">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --border: #334155;
+      --success: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 20px;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 24px; }
+    h1 { font-size: 1.5rem; color: var(--accent); margin-bottom: 6px; }
+    p.subtitle { color: var(--muted); font-size: 0.9rem; }
+
+    .privacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(74, 222, 128, 0.1);
+      color: var(--success);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 860px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 5px; }
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 10px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; height: 70px; }
+
+    .image-dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      background: #0f172a;
+      transition: border-color 0.2s;
+    }
+    .image-dropzone:hover { border-color: var(--accent); }
+    .drop-text { font-size: 0.85rem; color: var(--muted); }
+
+    /* プレビューエリア */
+    .preview-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: bold;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: #0f172a;
+    }
+
+    /* 各SNSモックアップスタイル */
+    .mockup-container {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* X (Twitter) Large Card */
+    .x-card {
+      background: #000000;
+      border: 1px solid #2f3336;
+      border-radius: 16px;
+      overflow: hidden;
+      max-width: 500px;
+      margin: 0 auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .x-img-wrapper {
+      width: 100%;
+      height: 260px;
+      background: #1e293b;
+      position: relative;
+      overflow: hidden;
+    }
+    .x-img-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .x-domain-overlay {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #e7e9ea;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .x-content {
+      padding: 12px 14px;
+      background: #000000;
+    }
+    .x-title {
+      color: #e7e9ea;
+      font-size: 0.95rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .x-desc {
+      color: #71767b;
+      font-size: 0.85rem;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Facebook Card */
+    .fb-card {
+      background: #242526;
+      border: 1px solid #3e4042;
+      border-radius: 8px;
+      overflow: hidden;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .fb-img-wrapper {
+      width: 100%;
+      height: 260px;
+      background: #1e293b;
+    }
+    .fb-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+    .fb-content { padding: 10px 12px; background: #242526; }
+    .fb-domain { color: #b0b3b8; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 2px; }
+    .fb-title { color: #e4e6eb; font-size: 0.95rem; font-weight: bold; margin-bottom: 2px; }
+    .fb-desc { color: #b0b3b8; font-size: 0.8rem; line-height: 1.2; }
+
+    /* LINE Card */
+    .line-card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      overflow: hidden;
+      max-width: 320px;
+      margin: 0 auto;
+      border: 1px solid #333;
+    }
+    .line-img-wrapper { width: 100%; height: 170px; background: #1e293b; }
+    .line-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+    .line-content { padding: 10px 12px; }
+    .line-title { color: #ffffff; font-size: 0.9rem; font-weight: bold; margin-bottom: 4px; }
+    .line-desc { color: #888888; font-size: 0.75rem; line-height: 1.3; }
+
+    /* HTML Meta Tag Export */
+    .meta-code {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      color: #38bdf8;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 10px;
+    }
+    .copy-meta-btn {
+      background: var(--border);
+      color: var(--text);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      margin-top: 8px;
+    }
+    .copy-meta-btn:hover { background: #475569; }
+
+    /* 相互リンク & ナビゲーション */
+    .cross-promo {
+      margin-top: 30px;
+      padding: 20px;
+      background: #1e293b;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .promo-title { font-size: 1rem; font-weight: bold; margin-bottom: 12px; color: var(--accent); text-align: center; }
+    .tool-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .tool-chip {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.85rem;
+      display: block;
+      transition: all 0.2s;
+    }
+    .tool-chip:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .tool-chip span { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    .external-banner {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .ext-link {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+    }
+    .ext-link:hover { color: var(--text); border-color: var(--muted); }
+
+    footer { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>📱 SNS OGP画像・シェアプレビュー生成ツール</h1>
+    <p class="subtitle">X(Twitter)・Facebook・LINEの投稿カード見た目をリアルタイム同時確認</p>
+  </header>
+
+  <div style="text-align: center;">
+    <div class="privacy-badge">
+      🔒 100% ブラウザ内ローカル処理（入力テキスト・画像は外部へ送信されません）
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- 入力コントロール -->
+    <div class="card">
+      <h2 style="font-size: 1.1rem; margin-bottom: 14px;">⚙️ OGP設定を入力</h2>
+
+      <div class="form-group">
+        <label>OGP画像 (1200 x 630 推奨)</label>
+        <div class="image-dropzone" onclick="document.getElementById('imgInput').click()">
+          <div class="drop-text" id="dropText">📷 画像をドラッグ＆ドロップ<br>またはクリックして選択</div>
+          <input type="file" id="imgInput" accept="image/*" style="display: none;" onchange="handleImage(event)">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>タイトル (og:title)</label>
+        <input type="text" id="inputTitle" value="完全無料・ブラウザ完結の個人開発Webツール集" oninput="updatePreview()">
+      </div>
+
+      <div class="form-group">
+        <label>説明文 (og:description)</label>
+        <textarea id="inputDesc" oninput="updatePreview()">写真のGPS削除や時給逆算、コードDiffなど、外部送信なしで安全に使える業務効率化ツール。</textarea>
+      </div>
+
+      <div class="form-group">
+        <label>サイト名 / ドメイン (og:site_name)</label>
+        <input type="text" id="inputDomain" value="b2b-tools.vercel.app" oninput="updatePreview()">
+      </div>
+
+      <h3 style="font-size: 0.9rem; margin-top: 16px; color: var(--muted);">📋 コピペ用 HTML メタタグ</h3>
+      <div class="meta-code" id="metaCode"></div>
+      <button class="copy-meta-btn" onclick="copyMeta()">タグをコピー</button>
+    </div>
+
+    <!-- プレビュー表示 -->
+    <div class="card">
+      <div class="preview-tabs">
+        <button class="tab-btn active" onclick="switchTab('all')">すべて表示</button>
+        <button class="tab-btn" onclick="switchTab('x')">𝕏 (Twitter)</button>
+        <button class="tab-btn" onclick="switchTab('fb')">Facebook</button>
+        <button class="tab-btn" onclick="switchTab('line')">LINE</button>
+      </div>
+
+      <div class="mockup-container">
+        <!-- X Card -->
+        <div id="view-x">
+          <label style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; display: block;">𝕏 (Twitter) Large Card プレビュー</label>
+          <div class="x-card">
+            <div class="x-img-wrapper">
+              <img id="xImg" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22600%22%20height%3D%22315%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%231e293b%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%2394a3b8%22%20font-family%3D%22sans-serif%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20dy%3D%22.3em%22%3E1200%20x%20630%20OGP%20Image%3C%2Ftext%3E%3C%2Fsvg%3E" alt="OGP">
+              <div class="x-domain-overlay" id="xDomain">b2b-tools.vercel.app</div>
+            </div>
+            <div class="x-content">
+              <div class="x-title" id="xTitle">完全無料・ブラウザ完結の個人開発Webツール集</div>
+              <div class="x-desc" id="xDesc">写真のGPS削除や時給逆算、コードDiffなど、外部送信なしで安全に使える業務効率化ツール。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Facebook Card -->
+        <div id="view-fb">
+          <label style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; display: block;">Facebook リンクシェア プレビュー</label>
+          <div class="fb-card">
+            <div class="fb-img-wrapper">
+              <img id="fbImg" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22600%22%20height%3D%22315%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%231e293b%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%2394a3b8%22%20font-family%3D%22sans-serif%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20dy%3D%22.3em%22%3E1200%20x%20630%20OGP%20Image%3C%2Ftext%3E%3C%2Fsvg%3E" alt="OGP">
+            </div>
+            <div class="fb-content">
+              <div class="fb-domain" id="fbDomain">B2B-TOOLS.VERCEL.APP</div>
+              <div class="fb-title" id="fbTitle">完全無料・ブラウザ完結の個人開発Webツール集</div>
+              <div class="fb-desc" id="fbDesc">写真のGPS削除や時給逆算、コードDiffなど、外部送信なしで安全に使える業務効率化ツール。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LINE Card -->
+        <div id="view-line">
+          <label style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; display: block;">LINE トーク内リンク プレビュー</label>
+          <div class="line-card">
+            <div class="line-img-wrapper">
+              <img id="lineImg" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22600%22%20height%3D%22315%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%231e293b%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%2394a3b8%22%20font-family%3D%22sans-serif%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20dy%3D%22.3em%22%3E1200%20x%20630%20OGP%20Image%3C%2Ftext%3E%3C%2Fsvg%3E" alt="OGP">
+            </div>
+            <div class="line-content">
+              <div class="line-title" id="lineTitle">完全無料・ブラウザ完結の個人開発Webツール集</div>
+              <div class="line-desc" id="lineDesc">写真のGPS削除や時給逆算、コードDiffなど、外部送信なしで安全に使える業務効率化ツール。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 相互リンク・他ツール紹介モジュール -->
+  <div class="cross-promo">
+    <div class="promo-title">🛠️ その他の無料ローカル完結ツール</div>
+    <div class="tool-links">
+      <a href="https://local-diff-checker.vercel.app/" target="_blank" class="tool-chip">
+        📝 テキスト・コード差分比較
+        <span>機密文章やコードの変更箇所を行・単語単位で比較</span>
+      </a>
+      <a href="https://image-gps-cleaner.vercel.app/" target="_blank" class="tool-chip">
+        📷 写真GPS・Exif完全削除
+        <span>位置情報・撮影日時を除去＆画像軽量化</span>
+      </a>
+      <a href="https://secure-password-generator-self.vercel.app/" target="_blank" class="tool-chip">
+        🔐 暗号パスワード生成器
+        <span>Web Crypto APIによる高強度APIキー・パスワード生成</span>
+      </a>
+      <a href="https://freelance-rate-calculator.vercel.app/" target="_blank" class="tool-chip">
+        ⏱️ フリーランス適正時給逆算
+        <span>手取り・税金・経費から請求時給を自動算出</span>
+      </a>
+      <a href="https://saas-profit-simulator.vercel.app/" target="_blank" class="tool-chip">
+        📊 SaaS損益分岐シミュレーター
+        <span>サブスク・買い切りビジネスの12ヶ月収益予測</span>
+      </a>
+      <a href="https://local-csv-cleaner.vercel.app/" target="_blank" class="tool-chip">
+        📑 CSV文字化け修復・整形
+        <span>Shift-JIS/UTF-8の文字化け・重複行を瞬時整形</span>
+      </a>
+    </div>
+
+    <div class="external-banner">
+      <a href="https://note.com/b2b_tools" target="_blank" class="ext-link">📝 note: 業務自動化ノウハウ</a>
+      <a href="https://qiita.com/b2b_tools" target="_blank" class="ext-link">💡 Qiita: 実装技術ログ</a>
+      <a href="https://gumroad.com/products" target="_blank" class="ext-link">⚡️ Gumroad: 業務効率化ツール</a>
+    </div>
+  </div>
+
+  <footer>
+    <p>100% Local Execution / Privacy First Architecture</p>
+  </footer>
+</div>
+
+<script>
+  let currentImgUrl = null;
+
+  function handleImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      currentImgUrl = evt.target.result;
+      document.getElementById('xImg').src = currentImgUrl;
+      document.getElementById('fbImg').src = currentImgUrl;
+      document.getElementById('lineImg').src = currentImgUrl;
+      document.getElementById('dropText').innerText = `✓ 選択済: ${file.name}`;
+      updateMetaCode();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function updatePreview() {
+    const title = document.getElementById('inputTitle').value || 'タイトル未入力';
+    const desc = document.getElementById('inputDesc').value || '説明文未入力';
+    const domain = document.getElementById('inputDomain').value || 'example.com';
+
+    // X
+    document.getElementById('xTitle').innerText = title;
+    document.getElementById('xDesc').innerText = desc;
+    document.getElementById('xDomain').innerText = domain;
+
+    // Facebook
+    document.getElementById('fbTitle').innerText = title;
+    document.getElementById('fbDesc').innerText = desc;
+    document.getElementById('fbDomain').innerText = domain.toUpperCase();
+
+    // LINE
+    document.getElementById('lineTitle').innerText = title;
+    document.getElementById('lineDesc').innerText = desc;
+
+    updateMetaCode();
+  }
+
+  function updateMetaCode() {
+    const title = document.getElementById('inputTitle').value;
+    const desc = document.getElementById('inputDesc').value;
+    const domain = document.getElementById('inputDomain').value;
+
+    const code = 
+`<!-- OGP / Twitter Card Tags -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${desc}">
+<meta property="og:site_name" content="${domain}">
+<meta property="og:image" content="https://${domain}/ogp.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${desc}">
+<meta name="twitter:image" content="https://${domain}/ogp.png">`;
+
+    document.getElementById('metaCode').innerText = code;
+  }
+
+  function copyMeta() {
+    const text = document.getElementById('metaCode').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('HTMLメタタグをクリップボードにコピーしました！');
+    });
+  }
+
+  function switchTab(type) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const vx = document.getElementById('view-x');
+    const vfb = document.getElementById('view-fb');
+    const vline = document.getElementById('view-line');
+
+    if (type === 'all') {
+      vx.style.display = 'block';
+      vfb.style.display = 'block';
+      vline.style.display = 'block';
+    } else {
+      vx.style.display = type === 'x' ? 'block' : 'none';
+      vfb.style.display = type === 'fb' ? 'block' : 'none';
+      vline.style.display = type === 'line' ? 'block' : 'none';
+    }
+  }
+
+  // 初期実行
+  updatePreview();
+</script>
+
+</body>
+</html>
